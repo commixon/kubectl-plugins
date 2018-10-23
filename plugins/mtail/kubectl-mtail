@@ -1,0 +1,146 @@
+#!/bin/bash
+
+# DEPENDENCIES should be installed and available in PATH.
+declare -a DEPENDENCIES=(
+                        "kubectl" 
+                        "jq"
+                        )
+
+function is_installed {
+    if ! which $1 > /dev/null; then
+        echo -e "Command $1 not found in PATH!"
+        exit 1
+    fi
+}
+
+function check_dependencies {
+    for package in "${DEPENDENCIES[@]}"; do
+        is_installed $package
+    done
+}
+
+function print_help {
+    echo "Usage: kubectl mtail"
+    exit 0
+}
+
+# Join function that supports a multi-character separator (copied from http://stackoverflow.com/a/23673883/398441)
+function join() {
+	# $1 is return variable name
+	# $2 is sep
+	# $3... are the elements to join
+	local retname=$1 sep=$2 ret=$3
+	shift 3 || shift $(($#))
+	printf -v "$retname" "%s" "$ret${@/#/$sep}"
+}
+
+NAMESPACE_FLAG=""
+TAIL_SINCE="10s"
+TAIL_NUMBER="-1"
+
+END_COLOR=$(tput sgr0)
+COLOR_INDEX=0
+function next_color {
+	NEW_COLOR=$(($1+1))
+    echo $NEW_COLOR
+}
+display_names_preview=()
+
+
+# Pod should be the last argument passed
+if [[ ${@: -1} != -* ]]
+then
+    pod="${@: -1}"
+else
+    echo "Last argument should be pod name to tail"
+    print_help
+fi
+
+if [ "$#" -ne 0 ]; then
+	while [ "$#" -gt 0 ]
+	do
+		case "$1" in
+		-h|--help)
+			print_help
+			;;
+		-s|--since)
+			if [ -z "$2" ]; then
+				:
+			else
+				TAIL_SINCE="$2"
+			fi
+			;;
+		-n|--namespace)
+			if [ -z "$2" ]; then
+				# current namespace
+                :
+			else
+				NAMESPACE_FLAG="--namespace $2"
+			fi
+			;;
+		-b|--line-buffered)
+			if [ "$2" = "true" ]; then
+				line_buffered="| grep - --line-buffered"
+			fi
+			;;
+		--tail)
+			if [ -z "$2" ]; then
+			    :
+			else
+			    TAIL_NUMBER="$2"
+			fi
+			;;
+		--)
+			break
+			;;
+		-*)
+			echo "Invalid option '$1'. Use --help to see the valid options" >&2
+			exit 1
+			;;
+		# an option argument, continue
+		*)  ;;
+		esac
+		shift
+	done
+fi
+
+
+PODS_LIST=(`kubectl get pods ${NAMESPACE_FLAG} --output=jsonpath='{.items[*].metadata.name}' | xargs -n1 | grep ${pod}`)
+PODS_LIST_SIZE=${#PODS_LIST[@]}
+
+if [ ${PODS_LIST_SIZE} -eq 0 ]; then
+	echo "No pods exists that matches ${pod}"
+	exit 1
+fi
+
+# Function that kills all kubectl processes that are started by kubetail in the background
+function kill_kubectl_processes {
+	kill 0
+}
+
+# Invoke the "kill_kubectl_processes" function when the script is stopped (including ctrl+c)
+# Note that "INT" is not used because if, for example, kubectl cannot find a container
+# (for example when running "kubetail something -c non_matching")
+trap kill_kubectl_processes EXIT
+
+for pod in ${PODS_LIST[@]}; do
+    COLOR_INDEX=`next_color $COLOR_INDEX`
+    START_COLOR=$(tput setaf $COLOR_INDEX)
+    DISPLAY_NAME="${pod}"
+    display_names_preview+=("${START_COLOR}${DISPLAY_NAME}${COLOR_END}")
+    colored_line="${START_COLOR}[${DISPLAY_NAME}] \$line ${END_COLOR}"
+    tail_cmd="kubectl logs ${pod} -f --since=${TAIL_SINCE} --tail=${TAIL_NUMBER} ${NAMESPACE_FLAG}"
+    colorify_lines_cmd="while read line; do echo \"$colored_line\" | tail -n +1; done"
+    logs_commands+=("${tail_cmd} | ${colorify_lines_cmd}");
+done
+
+# Preview pod colors
+echo "Will tail ${#display_names_preview[@]} logs..."
+for preview in "${display_names_preview[@]}"; do
+	echo "$preview"
+done
+
+# Join all log commands into one string separated by " & "
+join command_to_tail " & " "${logs_commands[@]}"
+
+tail -f -n +1 <( eval "${command_to_tail}" )
