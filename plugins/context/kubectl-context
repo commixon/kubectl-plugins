@@ -1,0 +1,22 @@
+#!/bin/bash
+
+# DEPENDENCIES should be installed and available in PATH.
+declare -a DEPENDENCIES=(
+                        "kubectl" 
+                        "jq"
+                        )
+
+function is_installed {
+    if ! which $1 > /dev/null; then
+        echo -e "Command $1 not found in PATH!"
+        exit 1
+    fi
+}
+
+function check_dependencies {
+    for package in "${DEPENDENCIES[@]}"; do
+        is_installed $package
+    done
+}
+
+echo "Context"
