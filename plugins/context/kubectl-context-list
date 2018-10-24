@@ -3,7 +3,6 @@
 # DEPENDENCIES should be installed and available in PATH.
 declare -a DEPENDENCIES=(
                         "kubectl" 
-                        "jq"
                         )
 
 function is_installed {

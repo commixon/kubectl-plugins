@@ -17,5 +17,3 @@ function check_dependencies {
         is_installed $package
     done
 }
-
-kubectl config use-context $1

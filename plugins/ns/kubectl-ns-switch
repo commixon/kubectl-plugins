@@ -18,4 +18,8 @@ function check_dependencies {
     done
 }
 
-kubectl config use-context $1
+SELECTED_NAMESPACE="$1"
+CURRENT_CONTEXT="$(kubectl config current-context)"
+kubectl config set-context $CURRENT_CONTEXT --namespace=$SELECTED_NAMESPACE > /dev/null
+echo "Set context namespace to \"$SELECTED_NAMESPACE\""
+

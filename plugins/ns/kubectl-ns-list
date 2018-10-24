@@ -18,4 +18,4 @@ function check_dependencies {
     done
 }
 
-kubectl config use-context $1
+kubectl get ns
